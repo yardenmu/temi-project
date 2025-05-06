@@ -29,7 +29,6 @@ class SimpleMqttClient {
                 }
 
                 override fun messageArrived(topic: String?, message: MqttMessage?) {
-                    Log.d("MQTT", "Message from [${topic}]: ${message.toString()}")
                     convertJsonMQTTtoObj(message)
                 }
 

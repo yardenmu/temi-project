@@ -20,6 +20,7 @@ import androidx.appcompat.app.AppCompatActivity
 import androidx.core.app.ActivityCompat
 import androidx.lifecycle.lifecycleScope
 import com.example.temi_test.databinding.ActivityMainBinding
+import com.example.temi_test.model.MqttMessageData
 import com.robotemi.sdk.Robot
 import com.robotemi.sdk.TtsRequest
 import com.robotemi.sdk.listeners.OnRobotReadyListener
@@ -85,7 +86,6 @@ class MainActivity : AppCompatActivity(), OnRobotReadyListener {
     private fun startMonitoring() {
         if (isMonitoring) return
         isMonitoring = true
-        //temi.beWithMe(null)
         temi.speak(TtsRequest.create("Hi, I am Temi. We are starting the rice heating experiment.", false))
         startFrameSendingLoop()
         Log.d(TAG, "Monitoring started")
@@ -341,6 +341,113 @@ class MainActivity : AppCompatActivity(), OnRobotReadyListener {
             setupTextureView()
         } else {
             Toast.makeText(this, "Camera permission denied!", Toast.LENGTH_SHORT).show()
+        }
+    }
+
+    fun scenario1(sensorData: MqttMessageData, message: String?){
+        var potFound = false
+        var plateReady = false
+        var utensilReady = false
+        var step = 1
+        message?.let { Log.d("temi-log", it) }
+
+        when (step) {
+            1 -> {
+                if (sensorData.device_name == "fridge-approached") {
+                    temi.goTo("startpoint")
+                }
+                if (sensorData.device_name == "fridge_door" && sensorData.status) {
+                    Log.d("temi-log", "Fridge door open")
+                    step = 2
+                }
+            }
+            2 -> {
+                if (sensorData.device_name == "pot_in_fridge" && !sensorData.status) {
+                    Log.d("temi-log", "metal pot detected")
+                    temi.goTo("secondpoint")
+                    potFound = true
+                    step = 3
+                }
+            }
+
+            3 -> {
+                if (message == "metal_pot_on_counter") {
+                    Log.d("temi-log", "סיר הונח על השיש")
+                    step = 4
+                }
+            }
+
+            4 -> {
+                if (message == "plastic_plate" || message == "ceramic_bowl") {
+                    Log.d("temi-log", "כלי חימום תקין זוהה")
+                    plateReady = true
+                    step = 5
+                }
+            }
+
+            5 -> {
+                if(sensorData.device_name == "drawer" && sensorData.status) {
+                    if ((message == "fork" || message == "spoon")) {
+                        Log.d("temi-log", "spoon detected")
+                        utensilReady = true
+                        step = 6
+                    }
+                }
+            }
+
+            6 -> {
+                if (message == "metal_pot_and_plate_on_counter") {
+                    Log.d("temi-log", "סיר וצלחת על השיש")
+                    step = 7
+                }
+            }
+
+            7 -> {
+                if (sensorData.device_name == "micro_door" && sensorData.status) {
+                    Log.d("temi-log", "מיקרוגל פתוח")
+                    temi.goTo("thirdpoint")
+                    step = 8
+                }
+            }
+
+            8 -> {
+                if (message == "plate_and_microwave_in_frame") {
+                    Log.d("temi-log", "צלחת מוכנסת למיקרוגל")
+                    if (message.contains("metal_pot")) {
+                        temi.speak(TtsRequest.create("dangerous metal pot on microwave", false))
+                        Log.d("temi-log", "❌ סכנת מתכת")
+                    }
+                    step = 9
+                }
+            }
+
+            9 -> {
+                if (sensorData.device_name == "micro_door" && !sensorData.status) {
+                    Log.d("temi-log", "דלת נסגרה")
+                    step = 10
+                }
+            }
+
+            10 -> {
+                Log.d("temi-log", "חימום פעיל... ממתין לסיום")
+                step = 11
+            }
+
+            11 -> {
+                if (message == "hand_and_plate_moving_away") {
+                    Log.d("temi-log", "צלחת הוצאה מהמיקרוגל")
+                    step = 12
+                }
+            }
+
+            12 -> {
+                if (message == "plate_on_counter") {
+                    Log.d("temi-log", "סיום תהליך בהצלחה")
+                    step = -1 // או reset לפי הצורך
+                }
+            }
+
+            else -> Log.d("temi-log", "No active step")
         }
     }
 }
