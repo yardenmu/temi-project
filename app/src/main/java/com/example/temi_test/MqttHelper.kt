@@ -10,6 +10,8 @@ class SimpleMqttClient {
     private val serverUri = "tcp://mqttbroker.hitheal.org.il:1883"
     private val clientId = "AndroidClient_" + System.currentTimeMillis()
     private val topics = listOf("sensors", "experiment", "made")
+    var onMqttMessageReceived: ((MqttMessageData) -> Unit)? = null
+
 
     private lateinit var mqttClient: MqttClient
 
@@ -66,7 +68,7 @@ class SimpleMqttClient {
         try {
             val gson = Gson()
             val data = gson.fromJson(payload, MqttMessageData::class.java)
-
+            onMqttMessageReceived?.invoke(data)
             Log.d("MQTT", "Device: ${data.device_name}, Status: ${data.status}")
 
         } catch (e: Exception) {

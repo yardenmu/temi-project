@@ -21,10 +21,10 @@ import androidx.core.app.ActivityCompat
 import androidx.lifecycle.lifecycleScope
 import com.example.temi_test.databinding.ActivityMainBinding
 import com.example.temi_test.model.MqttMessageData
+import com.example.temi_test.model.Scenario
 import com.robotemi.sdk.Robot
 import com.robotemi.sdk.TtsRequest
 import com.robotemi.sdk.listeners.OnRobotReadyListener
-import com.robotemi.sdk.TtsRequest.Language
 import kotlinx.coroutines.*
 import org.java_websocket.client.WebSocketClient
 import org.java_websocket.handshake.ServerHandshake
@@ -42,8 +42,10 @@ class MainActivity : AppCompatActivity(), OnRobotReadyListener {
     private lateinit var imageReader: ImageReader
     private var webSocketClient: WebSocketClient? = null
     private lateinit var mqttClient: SimpleMqttClient
-
-
+    private var aiMessage: String? = null
+    private var sensorData: MqttMessageData? = null
+    private var activeScenario: Scenario? = null
+    private var scenarioJob: Job? = null
     private var frameSendingJob: Job? = null
     private var isWebSocketConnected = false
     private var isMonitoring = false
@@ -75,6 +77,7 @@ class MainActivity : AppCompatActivity(), OnRobotReadyListener {
         temi.speak(TtsRequest.create("The camera is starting, please wait.", false))
 
         binding.btnStart.setOnClickListener {
+            temi.goTo("startposition")
             startMonitoring()
         }
 
@@ -83,13 +86,58 @@ class MainActivity : AppCompatActivity(), OnRobotReadyListener {
         }
     }
 
-    private fun startMonitoring() {
-        if (isMonitoring) return
-        isMonitoring = true
-        temi.speak(TtsRequest.create("Hi, I am Temi. We are starting the rice heating experiment.", false))
-        startFrameSendingLoop()
-        Log.d(TAG, "Monitoring started")
+//    private fun startMonitoring() {
+//        if (isMonitoring) return
+//        isMonitoring = true
+//        temi.speak(TtsRequest.create("Hi, I am Temi. We are starting the rice heating experiment.", false))
+//        startFrameSendingLoop()
+////        val scenario = getScenarioByName("scenario1", temi)
+////        Log.d("test", "$scenario")
+////        scenario?.let {
+////            runScenario(it, sensorData, aiMessage)
+////
+////        } ?: Log.d("scenario", "❗ No matching scenario found")
+//        //scenario(sensorData, aiMessage)
+//        mqttClient.onMqttMessageReceived = { sensor ->
+//            Log.d(TAG, "📥 scenario ${sensor.device_name} - ${sensor.status}")
+//            sensorData = sensor
+//        }
+//        Log.d(TAG, "Monitoring started")
+//    }
+private fun startMonitoring() {
+    if (isMonitoring) return
+    isMonitoring = true
+
+    temi.speak(TtsRequest.create("Hi, I am Temi. We are starting the rice heating experiment. please start after i finish to read the steps"+
+            "Step 1: Open the fridge door." +
+            "Step 2: Take out the metal pot." +
+            "Step 3: Place the pot on the counter." +
+            "Step 4: Select a heating-safe plate or bowl." +
+            "Step 5: Retrieve utensils from the drawer." +
+            "Step 6: Place the pot and plate together." +
+            "Step 7: Open the microwave door." +
+            "Step 8: Insert the plate into the microwave." +
+            "Step 9: Close the microwave door." +
+            "Step 10: Wait for heating to finish." +
+            "Step 11: Remove the plate from the microwave." +
+            "Step 12: Place the plate back on the counter. you may start the experience", false))
+
+    startFrameSendingLoop()
+
+    activeScenario = getScenarioByName("scenario1", temi)
+    if (activeScenario == null) {
+        Log.d("scenario", "❗ No matching scenario found")
+        return
     }
+    safeRunScenario()
+    mqttClient.onMqttMessageReceived = { sensor ->
+        Log.d(TAG, "📥 scenario ${sensor.device_name} - ${sensor.status}")
+        sensorData = sensor
+        safeRunScenario()
+    }
+
+    Log.d(TAG, "Monitoring started")
+}
 
     private fun stopMonitoring() {
         if (!isMonitoring) return
@@ -254,7 +302,7 @@ class MainActivity : AppCompatActivity(), OnRobotReadyListener {
     }
 
     private fun connectWebSocket() {
-        val uri = URI("ws://192.168.2.146:8000/ws")
+        val uri = URI("ws://192.168.2.145:8000/ws")
         webSocketClient = object : WebSocketClient(uri) {
             override fun onOpen(handshakedata: ServerHandshake?) {
                 isWebSocketConnected = true
@@ -262,8 +310,9 @@ class MainActivity : AppCompatActivity(), OnRobotReadyListener {
             }
 
             override fun onMessage(message: String?) {
-                Log.d(TAG, "Received message: $message")
-                handleWebSocketMessage(message)
+                Log.d("scenario", "$message")
+                aiMessage = message
+                safeRunScenario()
             }
 
             override fun onClose(code: Int, reason: String?, remote: Boolean) {
@@ -288,24 +337,6 @@ class MainActivity : AppCompatActivity(), OnRobotReadyListener {
             delay(3000)
             Log.d(TAG, "🔄 Attempting to reconnect WebSocket...")
             connectWebSocket()
-        }
-    }
-
-    private fun handleWebSocketMessage(message: String?) {
-        message?.let { Log.d("test", it) }
-        if (message != null) {
-                when (message) {
-                    "pot_detected" -> temi.speak(TtsRequest.create("Warning! A pot was detected.", false))
-                    "cup_detected" -> temi.speak(TtsRequest.create("A cup was detected.", false))
-                    "too_close" -> {
-                        temi.speak(TtsRequest.create("Please step back so I can see the environment.", false))
-                        temi.stopMovement()
-                        temi.turnBy(180)
-                    }
-
-                    "no_pot" -> Log.d(TAG, "No pot detected.")
-                    else -> Log.d(TAG, "Unknown message: $message")
-                }
         }
     }
 
@@ -344,110 +375,22 @@ class MainActivity : AppCompatActivity(), OnRobotReadyListener {
         }
     }
 
-    fun scenario1(sensorData: MqttMessageData, message: String?){
-        var potFound = false
-        var plateReady = false
-        var utensilReady = false
-        var step = 1
-        message?.let { Log.d("temi-log", it) }
-
-        when (step) {
-            1 -> {
-                if (sensorData.device_name == "fridge-approached") {
-                    temi.goTo("startpoint")
-                }
-                if (sensorData.device_name == "fridge_door" && sensorData.status) {
-                    Log.d("temi-log", "Fridge door open")
-                    step = 2
+    private fun runScenario(scenario: Scenario, sensorData: MqttMessageData?, message: String?) {
+        Log.d("scenario", "🚀 Running scenario: ${scenario.name}")
+        for (rule in scenario.rules) {
+            if (rule.condition(sensorData, message)) {
+                lifecycleScope.launch {
+                    rule.action()
                 }
             }
-            2 -> {
-                if (sensorData.device_name == "pot_in_fridge" && !sensorData.status) {
-                    Log.d("temi-log", "metal pot detected")
-                    temi.goTo("secondpoint")
-                    potFound = true
-                    step = 3
-                }
+        }
+    }
+    private fun safeRunScenario() {
+        scenarioJob?.cancel()
+        scenarioJob = lifecycleScope.launch {
+            activeScenario?.let {
+                runScenario(it, sensorData, aiMessage)
             }
-
-            3 -> {
-                if (message == "metal_pot_on_counter") {
-                    Log.d("temi-log", "סיר הונח על השיש")
-                    step = 4
-                }
-            }
-
-            4 -> {
-                if (message == "plastic_plate" || message == "ceramic_bowl") {
-                    Log.d("temi-log", "כלי חימום תקין זוהה")
-                    plateReady = true
-                    step = 5
-                }
-            }
-
-            5 -> {
-                if(sensorData.device_name == "drawer" && sensorData.status) {
-                    if ((message == "fork" || message == "spoon")) {
-                        Log.d("temi-log", "spoon detected")
-                        utensilReady = true
-                        step = 6
-                    }
-                }
-            }
-
-            6 -> {
-                if (message == "metal_pot_and_plate_on_counter") {
-                    Log.d("temi-log", "סיר וצלחת על השיש")
-                    step = 7
-                }
-            }
-
-            7 -> {
-                if (sensorData.device_name == "micro_door" && sensorData.status) {
-                    Log.d("temi-log", "מיקרוגל פתוח")
-                    temi.goTo("thirdpoint")
-                    step = 8
-                }
-            }
-
-            8 -> {
-                if (message == "plate_and_microwave_in_frame") {
-                    Log.d("temi-log", "צלחת מוכנסת למיקרוגל")
-                    if (message.contains("metal_pot")) {
-                        temi.speak(TtsRequest.create("dangerous metal pot on microwave", false))
-                        Log.d("temi-log", "❌ סכנת מתכת")
-                    }
-                    step = 9
-                }
-            }
-
-            9 -> {
-                if (sensorData.device_name == "micro_door" && !sensorData.status) {
-                    Log.d("temi-log", "דלת נסגרה")
-                    step = 10
-                }
-            }
-
-            10 -> {
-                Log.d("temi-log", "חימום פעיל... ממתין לסיום")
-                step = 11
-            }
-
-            11 -> {
-                if (message == "hand_and_plate_moving_away") {
-                    Log.d("temi-log", "צלחת הוצאה מהמיקרוגל")
-                    step = 12
-                }
-            }
-
-            12 -> {
-                if (message == "plate_on_counter") {
-                    Log.d("temi-log", "סיום תהליך בהצלחה")
-                    step = -1 // או reset לפי הצורך
-                }
-            }
-
-            else -> Log.d("temi-log", "No active step")
         }
     }
 }
