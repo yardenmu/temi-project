@@ -16,12 +16,13 @@ import android.util.Log
 import android.view.Surface
 import android.view.TextureView
 import android.widget.Toast
+import androidx.activity.viewModels
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.app.ActivityCompat
 import androidx.lifecycle.lifecycleScope
 import com.example.temi_test.databinding.ActivityMainBinding
-import com.example.temi_test.model.MqttMessageData
-import com.example.temi_test.model.Scenario
+import com.example.temi_test.helpers.SimpleMqttClient
+import com.example.temi_test.viewmodel.TemiViewModel
 import com.robotemi.sdk.Robot
 import com.robotemi.sdk.TtsRequest
 import com.robotemi.sdk.listeners.OnRobotReadyListener
@@ -37,18 +38,14 @@ class MainActivity : AppCompatActivity(), OnRobotReadyListener {
 
     private lateinit var temi: Robot
     private lateinit var binding: ActivityMainBinding
+    private val viewModel: TemiViewModel by viewModels()
     private lateinit var textureView: TextureView
     private var cameraDevice: CameraDevice? = null
     private lateinit var imageReader: ImageReader
     private var webSocketClient: WebSocketClient? = null
     private lateinit var mqttClient: SimpleMqttClient
-    private var aiMessage: String? = null
-    private var sensorData: MqttMessageData? = null
-    private var activeScenario: Scenario? = null
-    private var scenarioJob: Job? = null
     private var frameSendingJob: Job? = null
     private var isWebSocketConnected = false
-    private var isMonitoring = false
 
     private var cameraHandlerThread: HandlerThread? = null
     private var cameraHandler: Handler? = null
@@ -86,62 +83,46 @@ class MainActivity : AppCompatActivity(), OnRobotReadyListener {
         }
     }
 
-//    private fun startMonitoring() {
-//        if (isMonitoring) return
-//        isMonitoring = true
-//        temi.speak(TtsRequest.create("Hi, I am Temi. We are starting the rice heating experiment.", false))
-//        startFrameSendingLoop()
-////        val scenario = getScenarioByName("scenario1", temi)
-////        Log.d("test", "$scenario")
-////        scenario?.let {
-////            runScenario(it, sensorData, aiMessage)
-////
-////        } ?: Log.d("scenario", "❗ No matching scenario found")
-//        //scenario(sensorData, aiMessage)
-//        mqttClient.onMqttMessageReceived = { sensor ->
-//            Log.d(TAG, "📥 scenario ${sensor.device_name} - ${sensor.status}")
-//            sensorData = sensor
-//        }
-//        Log.d(TAG, "Monitoring started")
-//    }
-private fun startMonitoring() {
-    if (isMonitoring) return
-    isMonitoring = true
+    private fun startMonitoring() {
+        if (viewModel.isMonitoring.value == true) return
+        viewModel.startMonitoring()
 
-    temi.speak(TtsRequest.create("Hi, I am Temi. We are starting the rice heating experiment. please start after i finish to read the steps"+
-            "Step 1: Open the fridge door." +
-            "Step 2: Take out the metal pot." +
-            "Step 3: Place the pot on the counter." +
-            "Step 4: Select a heating-safe plate or bowl." +
-            "Step 5: Retrieve utensils from the drawer." +
-            "Step 6: Place the pot and plate together." +
-            "Step 7: Open the microwave door." +
-            "Step 8: Insert the plate into the microwave." +
-            "Step 9: Close the microwave door." +
-            "Step 10: Wait for heating to finish." +
-            "Step 11: Remove the plate from the microwave." +
-            "Step 12: Place the plate back on the counter. you may start the experience", false))
+//    temi.speak(TtsRequest.create("Hi, I am Temi. We are starting the rice heating experiment. please start after i finish to read the steps"+
+//            "Step 1: Open the fridge door." +
+//            "Step 2: Take out the metal pot." +
+//            "Step 3: Place the pot on the counter." +
+//            "Step 4: Select a heating-safe plate or bowl." +
+//            "Step 5: Retrieve utensils from the drawer." +
+//            "Step 6: Place the pot and plate together." +
+//            "Step 7: Open the microwave door." +
+//            "Step 8: Insert the plate into the microwave." +
+//            "Step 9: Close the microwave door." +
+//            "Step 10: Wait for heating to finish." +
+//            "Step 11: Remove the plate from the microwave." +
+//            "Step 12: Place the plate back on the counter. you may start the experience", false))
+        temi.speak(TtsRequest.create("היי אני טמי. מתחילים את ניסוי חימום האורז", false))
+        startFrameSendingLoop()
 
-    startFrameSendingLoop()
+        val scenario = getScenarioByName("scenario1", temi)
+        scenario?.let {
+            viewModel.setScenario(scenario)
+        }
+        if (scenario == null) {
+            Log.d("scenario", "❗ No matching scenario found")
+            return
+        }
 
-    activeScenario = getScenarioByName("scenario1", temi)
-    if (activeScenario == null) {
-        Log.d("scenario", "❗ No matching scenario found")
-        return
+        mqttClient.onMqttMessageReceived = { sensor ->
+            Log.d(TAG, "📥 test1 ${sensor.device_name} - ${sensor.status}")
+            viewModel.updateSensorData(sensor)
+            viewModel.runScenario()
+        }
+
+        Log.d(TAG, "Monitoring started")
     }
-    safeRunScenario()
-    mqttClient.onMqttMessageReceived = { sensor ->
-        Log.d(TAG, "📥 scenario ${sensor.device_name} - ${sensor.status}")
-        sensorData = sensor
-        safeRunScenario()
-    }
-
-    Log.d(TAG, "Monitoring started")
-}
 
     private fun stopMonitoring() {
-        if (!isMonitoring) return
-        isMonitoring = false
+        viewModel.stopMonitoring()
         temi.stopMovement()
         stopFrameSendingLoop()
         temi.speak(TtsRequest.create("The experiment has been stopped.", false))
@@ -311,8 +292,8 @@ private fun startMonitoring() {
 
             override fun onMessage(message: String?) {
                 Log.d("scenario", "$message")
-                aiMessage = message
-                safeRunScenario()
+                viewModel.updateAiMessage(message)
+                viewModel.runScenario()
             }
 
             override fun onClose(code: Int, reason: String?, remote: Boolean) {
@@ -372,25 +353,6 @@ private fun startMonitoring() {
             setupTextureView()
         } else {
             Toast.makeText(this, "Camera permission denied!", Toast.LENGTH_SHORT).show()
-        }
-    }
-
-    private fun runScenario(scenario: Scenario, sensorData: MqttMessageData?, message: String?) {
-        Log.d("scenario", "🚀 Running scenario: ${scenario.name}")
-        for (rule in scenario.rules) {
-            if (rule.condition(sensorData, message)) {
-                lifecycleScope.launch {
-                    rule.action()
-                }
-            }
-        }
-    }
-    private fun safeRunScenario() {
-        scenarioJob?.cancel()
-        scenarioJob = lifecycleScope.launch {
-            activeScenario?.let {
-                runScenario(it, sensorData, aiMessage)
-            }
         }
     }
 }

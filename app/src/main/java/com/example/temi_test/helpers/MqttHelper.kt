@@ -1,6 +1,7 @@
-package com.example.temi_test
+package com.example.temi_test.helpers
 
 import android.util.Log
+import com.example.temi_test.BuildConfig
 import com.example.temi_test.model.MqttMessageData
 import com.google.gson.Gson
 import org.eclipse.paho.client.mqttv3.*
@@ -10,6 +11,7 @@ class SimpleMqttClient {
     private val serverUri = "tcp://mqttbroker.hitheal.org.il:1883"
     private val clientId = "AndroidClient_" + System.currentTimeMillis()
     private val topics = listOf("sensors", "experiment", "made")
+    private var lastData: MqttMessageData? = null
     var onMqttMessageReceived: ((MqttMessageData) -> Unit)? = null
 
 
@@ -68,9 +70,13 @@ class SimpleMqttClient {
         try {
             val gson = Gson()
             val data = gson.fromJson(payload, MqttMessageData::class.java)
-            onMqttMessageReceived?.invoke(data)
-            Log.d("MQTT", "Device: ${data.device_name}, Status: ${data.status}")
-
+            if (data != lastData) {
+                lastData = data
+                onMqttMessageReceived?.invoke(data)
+                Log.d("MQTT", "✅ Device: ${data.device_name}, Status: ${data.status}")
+            } else {
+                Log.d("MQTT", "⏭️ Duplicate message ignored")
+            }
         } catch (e: Exception) {
             Log.e("MQTT", "Failed to parse JSON: ${e.message}")
         }
