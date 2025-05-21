@@ -26,13 +26,13 @@ fun getRiceHeatingScenario(temi: Robot): Scenario {
             Rule("Pot removed from fridge", { sensor, _ -> sensor?.device_name == "pot_in_fridge" && !sensor.status }, {
                 temi.speak(TtsRequest.create("סיר יצא מהמקרר", false))
             }),
-            Rule("Pot placed on counter", { _, msg -> msg == "metal_pot_on_counter" }, {
+            Rule("Pot and plate placed on counter", { _, msg -> msg == "pot_and_plate_on_counter" }, {
                 Log.d("scenario1", "A pot was placed on the counter.")
-                temi.speak(TtsRequest.create("סיר הונח על הדלפק", false))
+                temi.speak(TtsRequest.create("סיר וצלחת הונחו על הדלפק", false))
             }),
             Rule("Cutlery detected from drawer", { sensor, msg ->
                 sensor?.device_name == "drawer" && sensor.status &&
-                        (msg == "fork" || msg == "spoon" || msg == "take_cutlery")
+                        (msg == "cutlery_detected")
             }, {
                 Log.d("scenario1", "Cutlery was detected")
                 temi.speak(TtsRequest.create("סכום נלקח מהמגירה", false))
@@ -85,7 +85,7 @@ fun getRiceHeatingScenario(temi: Robot): Scenario {
                     microwaveJob?.cancel()
                     }
             ),
-            Rule("Plate inserted properly", { _, msg -> msg == "plate_inserted" }, {
+            Rule("Plate inserted properly", { _, msg -> msg == "plate_inserted_into_microwave" }, {
                 Log.d("scenario1", "Plate inserted correctly in microwave")
                 temi.speak(TtsRequest.create("צלחת נכנסה למיקרו", false))
             }),
@@ -101,23 +101,17 @@ fun getRiceHeatingScenario(temi: Robot): Scenario {
                     Log.d("scenario1", "Ignoring metal message - still in delay")
                 }
             }),
+            Rule("pouring_food", { _, msg ->
+                msg == "pouring_food"
+            }, {
+                Log.d("scenario1", "person is pouring food")
+                temi.speak(TtsRequest.create("מזיגת אוכל לצלחת", false))
+            }),
             Rule("Safe removal of plate from microwave", { _, msg ->
-                msg == "safe_plate_removal" || msg == "hand_and_plate_moving_away"
+                msg == "safe_plate_removal" || msg == "plate_removed_from_microwave"
             }, {
                 Log.d("scenario1", "Plate safely removed from microwave")
-                temi.speak(TtsRequest.create("Plate safely removed from microwave", false))
-            }),
-            Rule("Plate placed on counter", { _, msg -> msg == "plate_on_counter" }, {
-                Log.d("scenario1", "Plate placed on counter or table")
-                temi.speak(TtsRequest.create("Plate placed on the counter", false))
-            }),
-            Rule("Pick metal pot", { _, msg -> msg == "pick_metal_pot" }, {
-                Log.d("scenario1", "Picked up metal rice pot")
-                temi.speak(TtsRequest.create("בחירת סיר מתכת", false))
-            }),
-            Rule("Put pot in microwave", { _, msg -> msg == "pot_in_microwave" }, {
-                Log.d("scenario1", "Put metal pot into microwave")
-                temi.speak(TtsRequest.create("הנחת הסיר במיקרו", false))
+                temi.speak(TtsRequest.create("הצלחת הוצאה מהמיקרו", false))
             }),
             Rule("Drawer opened", { sensor, _ ->
                 sensor?.device_name == "drawer" && sensor.status
