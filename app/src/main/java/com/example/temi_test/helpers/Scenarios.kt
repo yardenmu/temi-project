@@ -14,15 +14,35 @@ private var lastDrawerOpenTime = 0L
 private var microwaveStartTime: Long = 0
 private var microwaveJob:Job?= null
 private var microwaveDoorOpened = false
+private var fridgeOpenTime: Long? = null
+private var fridgeJob: Job? = null
+private var isFridgeOpen = false
 
 fun getRiceHeatingScenario(temi: Robot): Scenario {
     return Scenario(
         name = "scenario1",
         rules = listOf(
-            Rule("Fridge door opened", { sensor, _ -> sensor?.device_name == "fridge_door" && sensor.status }, {
-                Log.d("scenario1", "Fridge door open")
-                temi.speak(TtsRequest.create("דלת מקרר נפתחת", false))
-            }),
+            Rule(
+                name = "Fridge door opened",
+                condition = { sensor, _ ->
+                    sensor?.device_name == "fridge_door" && sensor.status
+                },
+                action = {
+                    Log.d("scenario1", "Fridge door open")
+                    temi.speak(TtsRequest.create("דלת מקרר נפתחת", false))
+                    isFridgeOpen = true
+                    fridgeOpenTime = System.currentTimeMillis()
+                    fridgeJob?.cancel()
+                    fridgeJob = CoroutineScope(Dispatchers.Default).launch {
+                        delay(10_000)
+                        val now = System.currentTimeMillis()
+                        if (isFridgeOpen && fridgeOpenTime != null && now - fridgeOpenTime!! >= 10_000) {
+                            Log.d("scenario1", "הדלת עדיין פתוחה אחרי 10 שניות")
+                            temi.speak(TtsRequest.create("השארתם את דלת המקרר פתוחה", false))
+                        }
+                    }
+                }
+            ),
             Rule("Pot removed from fridge", { sensor, _ -> sensor?.device_name == "pot_in_fridge" && !sensor.status }, {
                 temi.speak(TtsRequest.create("סיר יצא מהמקרר", false))
             }),
@@ -37,6 +57,18 @@ fun getRiceHeatingScenario(temi: Robot): Scenario {
                 Log.d("scenario1", "Cutlery was detected")
                 temi.speak(TtsRequest.create("סכום נלקח מהמגירה", false))
             }),
+            Rule(
+                name = "Fridge door closed",
+                condition = { sensor, _ ->
+                    sensor?.device_name == "fridge_door" && !sensor.status
+                },
+                action = {
+                    Log.d("scenario1", "Fridge door closed")
+                    isFridgeOpen = false
+                    fridgeOpenTime = null
+                    fridgeJob?.cancel()
+                }
+            ),
             Rule("Filling plate with rice", { _, msg ->
                 msg == "filling_plate_with_rice" || msg == "transfer_rice"
             }, {
@@ -120,7 +152,13 @@ fun getRiceHeatingScenario(temi: Robot): Scenario {
                 temi.goTo("pouringplace")
                 Log.d("scenario1", "Drawer opened")
                 temi.speak(TtsRequest.create("מגירה נפתחה", false))
+            }),
+            Rule("Metal Plate Removed From Drawer", { sensor, _ -> sensor?.device_name == "plate-in-drawer" && !sensor.status }, {
+                Log.d("scenario1", "Metal Plate Removed From Drawer")
+                temi.speak(TtsRequest.create("הצלחת אינה מתאימה לחימום",
+                    false))
             })
+
         )
     )
 }
