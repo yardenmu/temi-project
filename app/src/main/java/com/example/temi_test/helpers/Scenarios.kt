@@ -153,7 +153,7 @@ fun getRiceHeatingScenario(temi: Robot): Scenario {
                 Log.d("scenario1", "Drawer opened")
                 temi.speak(TtsRequest.create("מגירה נפתחה", false))
             }),
-            Rule("Metal Plate Removed From Drawer", { sensor, _ -> sensor?.device_name == "plate-in-drawer" && !sensor.status }, {
+            Rule("Metal Plate Removed From Drawer", { sensor, _ -> sensor?.device_name == "plate-in-drawer" && sensor.status }, {
                 Log.d("scenario1", "Metal Plate Removed From Drawer")
                 temi.speak(TtsRequest.create("הצלחת אינה מתאימה לחימום",
                     false))

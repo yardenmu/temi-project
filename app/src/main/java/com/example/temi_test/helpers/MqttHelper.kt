@@ -67,13 +67,17 @@ class SimpleMqttClient {
     }
     fun convertJsonMQTTtoObj(message: MqttMessage?){
         val payload = message.toString()
+
         try {
             val gson = Gson()
             val data = gson.fromJson(payload, MqttMessageData::class.java)
             if (data != lastData) {
                 lastData = data
-                onMqttMessageReceived?.invoke(data)
-                Log.d("MQTT", "✅ Device: ${data.device_name}, Status: ${data.status}")
+                if(data.device_name != "fridge-approached"){
+                    onMqttMessageReceived?.invoke(data)
+                    Log.d("MQTT", "✅ Device: ${data.device_name}, Status: ${data.status}")
+                }
+
             } else {
                 Log.d("MQTT", "⏭️ Duplicate message ignored")
             }

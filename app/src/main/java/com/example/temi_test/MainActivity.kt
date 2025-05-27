@@ -86,31 +86,9 @@ class MainActivity : AppCompatActivity(), OnRobotReadyListener {
     private fun startMonitoring() {
         if (viewModel.isMonitoring.value == true) return
         viewModel.startMonitoring()
-
-//    temi.speak(TtsRequest.create("Hi, I am Temi. We are starting the rice heating experiment. please start after i finish to read the steps"+
-//            "Step 1: Open the fridge door." +
-//            "Step 2: Take out the metal pot." +
-//            "Step 3: Place the pot on the counter." +
-//            "Step 4: Select a heating-safe plate or bowl." +
-//            "Step 5: Retrieve utensils from the drawer." +
-//            "Step 6: Place the pot and plate together." +
-//            "Step 7: Open the microwave door." +
-//            "Step 8: Insert the plate into the microwave." +
-//            "Step 9: Close the microwave door." +
-//            "Step 10: Wait for heating to finish." +
-//            "Step 11: Remove the plate from the microwave." +
-//            "Step 12: Place the plate back on the counter. you may start the experience", false))
-        temi.speak(TtsRequest.create("היי אני טמי. מתחילים את ניסוי חימום האורז", false))
+        viewModel.initializeScenarioHandler(temi)
         startFrameSendingLoop()
 
-        val scenario = getScenarioByName("scenario1", temi)
-        scenario?.let {
-            viewModel.setScenario(scenario)
-        }
-        if (scenario == null) {
-            Log.d("scenario", "❗ No matching scenario found")
-            return
-        }
 
         mqttClient.onMqttMessageReceived = { sensor ->
             Log.d(TAG, "📥 test1 ${sensor.device_name} - ${sensor.status}")

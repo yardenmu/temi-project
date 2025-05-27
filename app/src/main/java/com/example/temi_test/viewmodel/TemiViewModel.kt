@@ -4,37 +4,35 @@ import androidx.lifecycle.LiveData
 import androidx.lifecycle.MutableLiveData
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.example.temi_test.helpers.ScenarioHandler
 import com.example.temi_test.model.MqttMessageData
-import com.example.temi_test.model.Scenario
-import kotlinx.coroutines.launch
+import com.robotemi.sdk.Robot
 
 class TemiViewModel : ViewModel() {
-
-    private val _aiMessage = MutableLiveData<String?>()
-    val aiMessage: LiveData<String?> = _aiMessage
 
     private val _sensorData = MutableLiveData<MqttMessageData?>()
     val sensorData: LiveData<MqttMessageData?> = _sensorData
 
+    private val _aiMessage = MutableLiveData<String?>()
+    val aiMessage: LiveData<String?> = _aiMessage
+
     private val _isMonitoring = MutableLiveData(false)
     val isMonitoring: LiveData<Boolean> = _isMonitoring
 
-    private var activeScenario: Scenario? = null
+    private lateinit var scenarioHandler: ScenarioHandler
 
-    private var lastRuleName: String? = null
-
-    fun setScenario(scenario: Scenario) {
-        activeScenario = scenario
-        lastRuleName = null
-    }
-
-    fun updateAiMessage(message: String?) {
-        _aiMessage.postValue(message)
-        runScenario()
+    fun initializeScenarioHandler(temi: Robot) {
+        scenarioHandler = ScenarioHandler(scope = viewModelScope, temi = temi)
+        scenarioHandler.startScenario()
     }
 
     fun updateSensorData(data: MqttMessageData) {
         _sensorData.postValue(data)
+        runScenario()
+    }
+
+    fun updateAiMessage(message: String?) {
+        _aiMessage.postValue(message)
         runScenario()
     }
 
@@ -52,19 +50,11 @@ class TemiViewModel : ViewModel() {
         val sensor = _sensorData.value
         val ai = _aiMessage.value
 
-        if (sensor != null || ai != null) {
-            activeScenario?.let { scenario ->
-                for (rule in scenario.rules) {
-                    if (rule.condition(sensor, ai) && rule.name != lastRuleName) {
-                        lastRuleName = rule.name
-                        viewModelScope.launch {
-                            rule.action()
-                        }
-                        break
-                    }
-                }
-            }
-        }
+        scenarioHandler.handleEvent(sensor, ai)
     }
+
+    fun getScenarioLogs() = scenarioHandler.getLogs()
+    fun getScenarioScore() = scenarioHandler.calculateFinalScore()
 }
+
 
